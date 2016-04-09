@@ -1,7 +1,13 @@
 package com.example.zhangjuh.pulltorefresh.pullable;
 
+import android.animation.Animator;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.os.Handler;
+import android.os.Message;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -12,6 +18,8 @@ import android.widget.LinearLayout;
 
 import com.example.zhangjuh.pulltorefresh.R;
 
+import java.lang.ref.WeakReference;
+
 /**
  * Created by zhangjuh on 2016/4/7.
  */
@@ -21,12 +29,12 @@ public class RefreshLayout extends LinearLayout {
     private boolean DEBUG = true;
 
     // Header
-    private View mHeaderView;
+    private LoadingLayout mHeaderView;
     // Content
     private FrameLayout mContentViewWrapper;
     private View mContentView;
     // Footer
-    private View mFooterView;
+    private LoadingLayout mFooterView;
 
     // Status
     private int mStatus;
@@ -40,9 +48,6 @@ public class RefreshLayout extends LinearLayout {
     private float mPullDist = 0;
 
     private boolean mIsBeginToPull = false;
-    private boolean mCanPullDown = false;
-    private boolean mCanPullUp = false;
-
 
     // Status of refreshing and loading
     public static final int IDLE = 0;
@@ -52,8 +57,15 @@ public class RefreshLayout extends LinearLayout {
     public static final int RELEASE_TO_LOAD = 4;
     public static final int DONE = 5;
 
+    // Mode
+    public static final int MODE_DISABLED = 0;
+    public static final int MODE_PULL_FROM_START = 1;
+    public static final int MODE_PULL_FROM_END = 2;
+    public static final int MODE_BOTH = 3;
+
     // Fraction
     private float mRatio = 2.0f;
+    private int mArrowAnimationRepeat = 1;
 
     private static final int MAX_PULL_DIST = 300;
 
@@ -116,22 +128,18 @@ public class RefreshLayout extends LinearLayout {
         if(types.hasValue(R.styleable.RefreshLayout_mode)){
             int mode = types.getInt(R.styleable.RefreshLayout_mode, 0);
             switch (mode) {
-                // Disabled
-                case 0:
+                case MODE_DISABLED:
                     mHasHeader = mHasFooter = false;
                     break;
-                // PullFromStart
-                case 1:
+                case MODE_PULL_FROM_START:
                     mHasHeader = true;
                     mHasFooter = false;
                     break;
-                // PullFromEnd
-                case 2:
+                case MODE_PULL_FROM_END:
                     mHasHeader = false;
                     mHasFooter = true;
                     break;
-                // Both
-                case 3:
+                case MODE_BOTH:
                     mHasHeader = mHasFooter = true;
                     break;
                 default:
@@ -146,17 +154,13 @@ public class RefreshLayout extends LinearLayout {
      *  Use to hide header and footer
      */
     protected final void refreshLoadingLayoutSize(int top, int bottom){
-        final int maxPullDist = MAX_PULL_DIST;
+        int maxPullDist = getMaxPullDist();
 
-        int paddingTop = mHasHeader? -(Math.min(maxPullDist, MAX_PULL_DIST - top)) : 0;
-        if(mHeaderView instanceof LoadingLayout && mHasHeader){
-            ((LoadingLayout) mHeaderView).setHeight(maxPullDist);
-        }
+        int paddingTop = mHasHeader? -(Math.min(maxPullDist, maxPullDist - top)) : 0;
+        mHeaderView.setHeight(maxPullDist);
 
-        int paddingBottom = mHasFooter ? -(Math.min(maxPullDist, MAX_PULL_DIST - bottom)) : 0;
-        if(mFooterView instanceof LoadingLayout && mHasFooter){
-            ((LoadingLayout) mFooterView).setHeight(maxPullDist);
-        }
+        int paddingBottom = mHasFooter? -(Math.min(maxPullDist, maxPullDist - bottom)) : 0;
+        mFooterView.setHeight(maxPullDist);
         if(DEBUG) {
             Log.d(TAG, "paddingTop is: " + paddingTop +
                     ", paddingEnd is: " + paddingBottom +
@@ -167,8 +171,15 @@ public class RefreshLayout extends LinearLayout {
         requestLayout();
     }
 
-    private int getMaxPullDist(){
-        return Math.round(getWidth()/2);
+    private int getMaxPullDist() {
+        int distance;
+        if(mHasHeader && mHasFooter) {
+            distance = Math.max(mHeaderView.getHeight(), mFooterView.getHeight());
+        } else {
+            distance = mHasFooter? mFooterView.getHeight() :
+                    (mHasHeader? mHeaderView.getHeight() : 0);
+        }
+        return Math.max(distance, MAX_PULL_DIST);
     }
 
     protected final void updateUI(int top, int bottom){
@@ -183,7 +194,7 @@ public class RefreshLayout extends LinearLayout {
         if(mHasHeader){
             addViewInternal(mHeaderView, 0, lp);
         }
-        if(this == mFooterView) {
+        if(this == mFooterView.getParent()) {
             removeView(mFooterView);
         }
         if(mHasFooter){
@@ -195,12 +206,14 @@ public class RefreshLayout extends LinearLayout {
     @Override
     public boolean dispatchTouchEvent(MotionEvent event){
         int action = event.getActionMasked();
+        int maxPullDist = getMaxPullDist();
         switch (action){
             case MotionEvent.ACTION_DOWN:
                 mLastY = event.getY();
                 mCurrentY = event.getY();
                 mPullDist = 0;
                 mIsBeginToPull = true;
+                mArrowAnimationRepeat = 1;
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
             case MotionEvent.ACTION_POINTER_UP:
@@ -222,23 +235,23 @@ public class RefreshLayout extends LinearLayout {
                     }
                 }
                 mLastY = event.getY();
+                mRatio = (float) (2 + 2 * Math.tan(Math.PI / 2 / getMeasuredHeight() * (Math.abs(mPullDist))));
                 if(mPullDist > 0){
-                    if(mPullDist < MAX_PULL_DIST) {
-                        refreshLoadingLayoutSize((int) (mPullDist), 0);
-                    } else {
-                        mPullDist = MAX_PULL_DIST;
-                        refreshLoadingLayoutSize(MAX_PULL_DIST, 0);
+                    if(mPullDist >= maxPullDist && mArrowAnimationRepeat == 1) {
+                        startAnimationOfPullDown();
+                        mArrowAnimationRepeat = 0;
                     }
+                    refreshLoadingLayoutSize((int) mPullDist, 0);
                 }
                 break;
             case MotionEvent.ACTION_UP:
                 mIsBeginToPull = false;
                 mCurrentY = mLastY = event.getY();
-                mPullDist = 0;
-                refreshLoadingLayoutSize(0 , 0);
-                if(mHeaderView instanceof LoadingLayout){
-                    ((LoadingLayout) mHeaderView).setRefreshingIcon(R.drawable.noarrow);
-                    ((LoadingLayout) mHeaderView).repeatAnimation();
+                if(mPullDist >= maxPullDist) {
+                    refreshLoadingLayoutSize(maxPullDist, 0);
+                    startRefreshingAnimation();
+                } else {
+                    reset();
                 }
                 break;
             default:
@@ -246,7 +259,8 @@ public class RefreshLayout extends LinearLayout {
         }
         if(DEBUG){
             Log.d(TAG, "dispatchEvent: mCurrentY = " + mCurrentY +
-                    ", mPullDist = " + mPullDist + ", mLastY = " + mLastY);
+                    ", mPullDist = " + mPullDist + ", mLastY = " + mLastY +
+                    ", mArrowAnimationRepeat = " + mArrowAnimationRepeat);
         }
         super.dispatchTouchEvent(event);
         return true;
@@ -255,5 +269,69 @@ public class RefreshLayout extends LinearLayout {
     @Override
     public boolean onInterceptTouchEvent(MotionEvent event){
         return super.onInterceptTouchEvent(event);
+    }
+
+    private void startAnimationOfPullDown(){
+        ObjectAnimator animator = ObjectAnimator.ofFloat(
+                mHeaderView.getRefreshingIcon(),
+                "rotation", 0f, -180f);
+        animator.setDuration(200);
+        mHeaderView.setAnimator(animator);
+        mHeaderView.startAnimation();
+    }
+
+    private void startRefreshingAnimation(){
+        mHeaderView.setRefreshingIcon(R.drawable.noarrow);
+
+        ObjectAnimator refresh = ObjectAnimator.ofFloat(
+                mHeaderView.getRefreshingIcon(),
+                "rotation", 0f, 360f);
+        refresh.setRepeatCount(ValueAnimator.INFINITE);
+        refresh.setDuration(500);
+
+        mHeaderView.setAnimator(refresh);
+        mHeaderView.repeatAnimation();
+
+        AnimationHandler animationHandler = new AnimationHandler(this);
+        Message message = animationHandler.obtainMessage();
+        animationHandler.sendMessageDelayed(message, 3000);
+    }
+    
+    private void resetLoadingLayout() {
+        mHeaderView.setMode(LoadingLayout.MODE_PULL_FROM_START);
+        mHeaderView.reset();
+        mFooterView.setMode(LoadingLayout.MODE_PULL_FROM_END);
+        mFooterView.reset();
+        refreshLoadingLayoutSize(0, 0);
+    }
+
+    private void resetRefreshingView() {
+        // TODO
+    }
+
+    private void resetValue() {
+        mArrowAnimationRepeat = 1;
+        mRatio = 2.0f;
+        mIsBeginToPull = false;
+        mStatus = IDLE;
+    }
+
+    public void reset() {
+        resetLoadingLayout();
+        resetRefreshingView();
+        resetValue();
+    }
+    
+    private static class AnimationHandler extends Handler {
+        private WeakReference<RefreshLayout> mRefreshLayoutWR;
+        
+        public AnimationHandler(RefreshLayout refreshLayout){
+            mRefreshLayoutWR = new WeakReference<>(refreshLayout);
+        }
+        
+        @Override
+        public void handleMessage(Message msg){
+            mRefreshLayoutWR.get().reset();
+        }
     }
 }

@@ -36,6 +36,10 @@ public class LoadingLayout extends FrameLayout {
     private static final int PAUSE_ANIMATION  = 2;
     private static final int REPEAT_ANIMATION = 3;
 
+    // Mode
+    public static final int MODE_PULL_FROM_START = 0;
+    public static final int MODE_PULL_FROM_END = 1;
+
     private TextView mRefreshingNote;
     private ImageView mRefreshingIcon;
     private ProgressBar mProgressBar;
@@ -96,7 +100,7 @@ public class LoadingLayout extends FrameLayout {
 
     private void setAnimationStatus(int status) {
         Message message = mAnimatorHandler.obtainMessage();
-        message.obj = status;
+        message.what = status;
         mAnimatorHandler.sendMessage(message);
     }
 
@@ -168,16 +172,16 @@ public class LoadingLayout extends FrameLayout {
         mRefreshingIcon = (ImageView) mInnerLayout.findViewById(R.id.loadingIcon);
         mRefreshingNote = (TextView) mInnerLayout.findViewById(R.id.loadingNote);
         mProgressBar = (ProgressBar) mInnerLayout.findViewById(R.id.loadingBar);
-        mAnimator = ObjectAnimator.ofFloat(mRefreshingIcon, "rotation", 0f, 360f);
-        mAnimator.setDuration(1000);
+        mAnimator = ObjectAnimator.ofFloat(mRefreshingIcon, "rotation", 0f, 180f);
+        mAnimator.setDuration(500);
 
         switch (mMode) {
             // pullFromStart
-            case 0:
+            case MODE_PULL_FROM_START:
                 show("icon");
                 break;
             // pullFromEnd
-            case 1:
+            case MODE_PULL_FROM_END:
                 show("text");
                 mRefreshingNote.setText(R.string.loading);
                 break;
@@ -195,7 +199,89 @@ public class LoadingLayout extends FrameLayout {
         requestLayout();
     }
 
+    public final void setPaddingTop(int paddingTop) {
+        int left = getPaddingLeft();
+        int right = getPaddingRight();
+        int bottom = getPaddingBottom();
+        setPadding(left, paddingTop, right, bottom);
+    }
 
+    public int getPaddingTop(){
+        return super.getPaddingTop();
+    }
+
+    public final void setPaddingBottom(int paddingBottom) {
+        int left = getPaddingLeft();
+        int right = getPaddingRight();
+        int top = getPaddingTop();
+        setPadding(left, top, right, paddingBottom);
+    }
+
+    public int getPaddingBottom(){
+        return super.getPaddingBottom();
+    }
+
+    public TextView getRefreshingNote() {
+        return mRefreshingNote;
+    }
+
+    public void setRefreshingNote(TextView refreshingNote) {
+        mRefreshingNote = refreshingNote;
+    }
+
+    public ImageView getRefreshingIcon() {
+        return mRefreshingIcon;
+    }
+
+    public void setRefreshingIcon(ImageView refreshingIcon) {
+        mRefreshingIcon = refreshingIcon;
+    }
+
+    public ProgressBar getProgressBar() {
+        return mProgressBar;
+    }
+
+    public void setProgressBar(ProgressBar progressBar) {
+        mProgressBar = progressBar;
+    }
+
+    public Animator getAnimator() {
+        return mAnimator;
+    }
+
+    public int getMode() {
+        return mMode;
+    }
+
+    public void setMode(int mode) {
+        mMode = mode;
+    }
+
+    public final void reset() {
+        mAnimator.end();
+        switch (mMode) {
+            case MODE_PULL_FROM_START:
+                // show and hide
+                show("icon");
+                mRefreshingIcon.setImageResource(R.drawable.xlistview_arrow);
+                mAnimator = ObjectAnimator.ofFloat(mRefreshingIcon, "rotation",
+                        0f, -180f);
+                mAnimator.setDuration(100);
+                break;
+            case MODE_PULL_FROM_END:
+                // show and hide
+                show("text");
+                mRefreshingIcon.setImageResource(R.drawable.noarrow);
+                mAnimator = ObjectAnimator.ofFloat(mRefreshingIcon, "rotation",
+                        0f, 360f);
+                ((ObjectAnimator) mAnimator).setRepeatCount(ValueAnimator.INFINITE);
+                mAnimator.setDuration(500);
+                break;
+            default:
+                hide();
+                break;
+        }
+    }
 
     private static class AnimatorHandler extends Handler {
         private WeakReference<LoadingLayout> mLoadingLayoutWeakReference;
@@ -207,7 +293,7 @@ public class LoadingLayout extends FrameLayout {
         @Override
         public void handleMessage(Message msg){
             LoadingLayout loadingLayout = mLoadingLayoutWeakReference.get();
-            switch (Integer.decode(msg.obj.toString())){
+            switch (msg.what) {
                 case PLAY_ANIMATION:
                     loadingLayout.mAnimator.start();
                     break;
@@ -219,8 +305,8 @@ public class LoadingLayout extends FrameLayout {
                     break;
                 case REPEAT_ANIMATION:
                     // loadingLayout.mRefreshingIcon.setImageResource(R.drawable.noarrow);
-                    if(loadingLayout.mAnimator instanceof ValueAnimator){
-                        ((ValueAnimator)loadingLayout.mAnimator).setRepeatCount(
+                    if (loadingLayout.mAnimator instanceof ValueAnimator) {
+                        ((ValueAnimator) loadingLayout.mAnimator).setRepeatCount(
                                 ValueAnimator.INFINITE);
                         loadingLayout.mAnimator.start();
                     }
