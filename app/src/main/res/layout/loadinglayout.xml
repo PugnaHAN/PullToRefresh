@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <FrameLayout
+        android:orientation="vertical"
+        android:id="@+id/loadingLayout"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/loadinglayout_height">
+
+        <ProgressBar
+            android:id="@+id/loadingBar"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/loadinglayout_progressBar_height"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:visibility="gone"/>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/loadinglayout_progressBar_height"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/loadinglayout_hint_height">
+
+            <ImageView
+                android:contentDescription="@string/loading_icon"
+                android:id="@+id/loadingIcon"
+                android:layout_width="@dimen/loadinglayout_loadingIcon_height"
+                android:layout_height="match_parent"
+                android:padding="@dimen/loadinglayout_loadingIcon_padding"
+                android:layout_gravity="center"
+                android:src="@drawable/xlistview_arrow"/>
+
+            <TextView
+                android:id="@+id/loadingNote"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:layout_marginStart="@dimen/loadinglayout_loadingNote_marginLeft"
+                android:text="@string/release_to_refresh"
+                android:textSize="@dimen/loadinglayout_loadingNote_textSize"
+                android:textColor="@color/tab_description_text_selected"
+                />
+        </LinearLayout>
+
+    </FrameLayout>
+
+</merge>
