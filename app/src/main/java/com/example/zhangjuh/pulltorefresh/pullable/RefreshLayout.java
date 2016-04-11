@@ -13,6 +13,8 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.Interpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
@@ -63,11 +65,21 @@ public class RefreshLayout extends LinearLayout {
     public static final int MODE_PULL_FROM_END = 2;
     public static final int MODE_BOTH = 3;
 
+    // Duration
+    public static final int SMOOTH_SCROLL_DURATION_MS = 200;
+    public static final int SMOOTH_SCROLL_LONG_DURATION_MS = 325;
+    static final int DEMO_SCROLL_INTERVAL = 225;
+
     // Fraction
     private float mRatio = 2.0f;
     private int mArrowAnimationRepeat = 1;
 
-    private static final int MAX_PULL_DIST = 300;
+    private static final int MAX_PULL_DIST = 240;
+
+    private SmoothScrollRunnable mCurrentScrollRunable;
+    private Interpolator mScrollAnimationInterpolator;
+
+    private boolean mIsRefreshing = false;
 
     /* Three basic constructor */
     public RefreshLayout(Context context){
@@ -153,13 +165,15 @@ public class RefreshLayout extends LinearLayout {
     /**
      *  Use to hide header and footer
      */
-    protected final void refreshLoadingLayoutSize(int top, int bottom){
+    protected final void refreshLoadingLayoutSize(){
         int maxPullDist = getMaxPullDist();
 
-        int paddingTop = mHasHeader? -(Math.min(maxPullDist, maxPullDist - top)) : 0;
+        // int paddingTop = mHasHeader? -(Math.min(maxPullDist, maxPullDist - top)) : 0;
+        int paddingTop = mHasHeader? -maxPullDist : 0;
         mHeaderView.setHeight(maxPullDist);
 
-        int paddingBottom = mHasFooter? -(Math.min(maxPullDist, maxPullDist - bottom)) : 0;
+        // int paddingBottom = mHasFooter? -(Math.min(maxPullDist, maxPullDist - bottom)) : 0;
+        int paddingBottom = mHasFooter? -maxPullDist : 0;
         mFooterView.setHeight(maxPullDist);
         if(DEBUG) {
             Log.d(TAG, "paddingTop is: " + paddingTop +
@@ -168,16 +182,23 @@ public class RefreshLayout extends LinearLayout {
         }
 
         setPadding(0, paddingTop, 0, paddingBottom);
-        requestLayout();
+    }
+
+    @Override
+    public void onSizeChanged(int w, int h, int oldw, int oldh){
+        if(DEBUG){
+            Log.d(TAG, String.format("onSizeChanged: W = %d, H = %d", w, h));
+        }
+        super.onSizeChanged(w, h, oldw, oldh);
     }
 
     private int getMaxPullDist() {
         int distance;
         if(mHasHeader && mHasFooter) {
-            distance = Math.max(mHeaderView.getHeight(), mFooterView.getHeight());
+            distance = Math.max(mHeaderView.getMeasuredHeight(), mFooterView.getMeasuredHeight());
         } else {
-            distance = mHasFooter? mFooterView.getHeight() :
-                    (mHasHeader? mHeaderView.getHeight() : 0);
+            distance = mHasFooter? mFooterView.getMeasuredHeight() :
+                    (mHasHeader? mHeaderView.getMeasuredHeight() : 0);
         }
         return Math.max(distance, MAX_PULL_DIST);
     }
@@ -200,7 +221,7 @@ public class RefreshLayout extends LinearLayout {
         if(mHasFooter){
             addViewInternal(mFooterView, lp);
         }
-        refreshLoadingLayoutSize(top, bottom);
+        refreshLoadingLayoutSize();
     }
 
     @Override
@@ -209,11 +230,13 @@ public class RefreshLayout extends LinearLayout {
         int maxPullDist = getMaxPullDist();
         switch (action){
             case MotionEvent.ACTION_DOWN:
-                mLastY = event.getY();
-                mCurrentY = event.getY();
-                mPullDist = 0;
-                mIsBeginToPull = true;
-                mArrowAnimationRepeat = 1;
+                if(!mIsRefreshing) {
+                    mLastY = event.getY();
+                    mCurrentY = event.getY();
+                    mPullDist = 0;
+                    mIsBeginToPull = true;
+                    mArrowAnimationRepeat = 1;
+                }
                 break;
             case MotionEvent.ACTION_POINTER_DOWN:
             case MotionEvent.ACTION_POINTER_UP:
@@ -221,15 +244,24 @@ public class RefreshLayout extends LinearLayout {
                 mIsBeginToPull = false;
                 break;
             case MotionEvent.ACTION_MOVE:
-                if(mIsBeginToPull) {
+                if(mIsBeginToPull && !mIsRefreshing) {
+                    mPullDist =  mPullDist + (event.getY() - mLastY) / mRatio;
                     if(mContentView instanceof Pullable) {
-                        if (mPullDist >= 0 || ((Pullable) mContentView).isPullDownEnabled()) {
-                            mPullDist = mPullDist + (event.getY() - mLastY) / mRatio;
+                        // Pulling down
+                        if (mPullDist > 0 && ((Pullable) mContentView).isPullDownEnabled()) {
                             if (mPullDist < 0) {
                                 mPullDist = 0;
                             }
                             if (mPullDist > getMeasuredHeight()) {
                                 mPullDist = getMeasuredHeight();
+                            }
+                        } else if(mPullDist < 0 &&
+                                ((Pullable) mContentView).isPullUpEnabled()){
+                            if(mPullDist > 0) {
+                                mPullDist = 0;
+                            }
+                            if (mPullDist < -getMeasuredHeight()) {
+                                mPullDist = -getMeasuredHeight();
                             }
                         }
                     }
@@ -241,14 +273,17 @@ public class RefreshLayout extends LinearLayout {
                         startAnimationOfPullDown();
                         mArrowAnimationRepeat = 0;
                     }
-                    refreshLoadingLayoutSize((int) mPullDist, 0);
+                    moveByScroll(-(int)mPullDist);
+                } else if(mPullDist < 0) {
+                    moveByScroll(getMaxPullDist());
                 }
                 break;
             case MotionEvent.ACTION_UP:
                 mIsBeginToPull = false;
                 mCurrentY = mLastY = event.getY();
                 if(mPullDist >= maxPullDist) {
-                    refreshLoadingLayoutSize(maxPullDist, 0);
+                    mIsRefreshing = true;
+                    smoothScrollTo(-getMaxPullDist());
                     startRefreshingAnimation();
                 } else {
                     reset();
@@ -267,8 +302,31 @@ public class RefreshLayout extends LinearLayout {
     }
 
     @Override
+    public void onLayout(boolean changed, int l, int t, int r, int b){
+        int loadingHeight = getMaxPullDist();
+        if(mHasHeader) {
+            mHeaderView.layout(0, -loadingHeight, mHeaderView.getMeasuredWidth(), 0);
+        }
+        mContentViewWrapper.layout(0, 0,
+                mContentViewWrapper.getMeasuredWidth(),
+                mContentViewWrapper.getMeasuredHeight());
+        if(mHasFooter) {
+            mFooterView.layout(0, mContentViewWrapper.getMeasuredHeight(),
+                    mFooterView.getMeasuredWidth(),
+                    mContentViewWrapper.getMeasuredHeight() + mFooterView.getMeasuredHeight());
+        }
+    }
+
+    @Override
     public boolean onInterceptTouchEvent(MotionEvent event){
-        return super.onInterceptTouchEvent(event);
+        switch (event.getAction()){
+            case MotionEvent.ACTION_MOVE:
+                if(mIsRefreshing) {
+                    return false;
+                }
+            default:
+                return super.onInterceptTouchEvent(event);
+        }
     }
 
     private void startAnimationOfPullDown(){
@@ -296,13 +354,17 @@ public class RefreshLayout extends LinearLayout {
         Message message = animationHandler.obtainMessage();
         animationHandler.sendMessageDelayed(message, 3000);
     }
-    
+
+    /**
+     * Some reset methods - used to reset the layout to initial status
+     */
     private void resetLoadingLayout() {
         mHeaderView.setMode(LoadingLayout.MODE_PULL_FROM_START);
         mHeaderView.reset();
         mFooterView.setMode(LoadingLayout.MODE_PULL_FROM_END);
         mFooterView.reset();
-        refreshLoadingLayoutSize(0, 0);
+        refreshLoadingLayoutSize();
+        moveByScroll(0);
     }
 
     private void resetRefreshingView() {
@@ -321,6 +383,126 @@ public class RefreshLayout extends LinearLayout {
         resetRefreshingView();
         resetValue();
     }
+
+    final class SmoothScrollRunnable implements Runnable {
+        private final Interpolator mInterpolator;
+        private final int mScrollToY;
+        private final int mScrollFromY;
+        private final long mDuration;
+        private OnSmoothScrollFinishedListener mListener;
+
+        private boolean mContinueRunning = true;
+        private long mStartTime = -1;
+        private int mCurrentY = -1;
+
+        public SmoothScrollRunnable(int fromY, int toY, long duration, OnSmoothScrollFinishedListener listener) {
+            mScrollFromY = fromY;
+            mScrollToY = toY;
+            mDuration = duration;
+            mListener = listener;
+            mInterpolator = mScrollAnimationInterpolator;
+        }
+
+        @Override
+        public void run() {
+            /**
+             * Only set mStartTime if this is the first time we're starting,
+             * else actually calculate the Y delta
+             */
+            if (mStartTime == -1) {
+                mStartTime = System.currentTimeMillis();
+            } else {
+
+                /**
+                 * We do do all calculations in long to reduce software float
+                 * calculations. We use 1000 as it gives us good accuracy and
+                 * small rounding errors
+                 */
+                long normalizedTime = (1000 * (System.currentTimeMillis() - mStartTime)) / mDuration;
+                normalizedTime = Math.max(Math.min(normalizedTime, 1000), 0);
+
+                final int deltaY = Math.round((mScrollFromY - mScrollToY)
+                        * mInterpolator.getInterpolation(normalizedTime / 1000f));
+                mCurrentY = mScrollFromY - deltaY;
+                moveByScroll(mCurrentY);
+            }
+
+            // If we're not at the target Y, keep going...
+            if (mContinueRunning && mScrollToY != mCurrentY) {
+                postOnAnimation(this);
+            } else {
+                if (null != mListener) {
+                    mListener.onSmoothScrollFinished();
+                }
+            }
+        }
+
+        public void stop() {
+            mContinueRunning = false;
+            removeCallbacks(this);
+        }
+    }
+
+    interface OnSmoothScrollFinishedListener {
+        void onSmoothScrollFinished();
+    }
+
+    private void moveByScroll(int newScrollValue) {
+        int oldScrollValue = getScrollY();
+        if(oldScrollValue == newScrollValue) {
+            return;
+        }
+        scrollTo(0, newScrollValue);
+    }
+
+    protected final void smoothScrollTo(int newScrollValue, long duration, long delayMillis,
+                                      OnSmoothScrollFinishedListener listener) {
+        if (null != mCurrentScrollRunable) {
+            mCurrentScrollRunable.stop();
+        }
+
+        int oldScrollValue = getScrollY();
+
+        if (oldScrollValue != newScrollValue) {
+            if (null == mScrollAnimationInterpolator) {
+                // Default interpolator is a Decelerate Interpolator
+                mScrollAnimationInterpolator = new DecelerateInterpolator();
+            }
+            mCurrentScrollRunable = new SmoothScrollRunnable(oldScrollValue, newScrollValue, duration, listener);
+
+            if (delayMillis > 0) {
+                postDelayed(mCurrentScrollRunable, delayMillis);
+            } else {
+                post(mCurrentScrollRunable);
+            }
+        }
+    }
+
+    protected final void smoothScrollToAndBack(int y) {
+        smoothScrollTo(y, SMOOTH_SCROLL_DURATION_MS, 0, new OnSmoothScrollFinishedListener() {
+
+            @Override
+            public void onSmoothScrollFinished() {
+                smoothScrollTo(0, SMOOTH_SCROLL_DURATION_MS, DEMO_SCROLL_INTERVAL, null);
+            }
+        });
+    }
+
+    protected int getPullToRefreshScrollDuration() {
+        return SMOOTH_SCROLL_DURATION_MS;
+    }
+
+    protected final void smoothScrollTo(int scrollValue) {
+        smoothScrollTo(scrollValue, getPullToRefreshScrollDuration());
+    }
+
+    protected final void smoothScrollTo(int scrollValue, OnSmoothScrollFinishedListener listener) {
+        smoothScrollTo(scrollValue, getPullToRefreshScrollDuration(), 0, listener);
+    }
+
+    protected final void smoothScrollTo(int scrollValue, long duration) {
+        smoothScrollTo(scrollValue, duration, 0, null);
+    }
     
     private static class AnimationHandler extends Handler {
         private WeakReference<RefreshLayout> mRefreshLayoutWR;
@@ -331,6 +513,7 @@ public class RefreshLayout extends LinearLayout {
         
         @Override
         public void handleMessage(Message msg){
+            mRefreshLayoutWR.get().mIsRefreshing = false;
             mRefreshLayoutWR.get().reset();
         }
     }

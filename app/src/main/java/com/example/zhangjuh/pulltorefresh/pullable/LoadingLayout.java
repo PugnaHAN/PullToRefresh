@@ -10,12 +10,12 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.Interpolator;
 import android.view.animation.LinearInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
@@ -276,6 +276,13 @@ public class LoadingLayout extends FrameLayout {
                         0f, 360f);
                 ((ObjectAnimator) mAnimator).setRepeatCount(ValueAnimator.INFINITE);
                 mAnimator.setDuration(500);
+                mRefreshingNote.setOnClickListener(new OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        show("icon");
+                        mAnimator.start();
+                    }
+                });
                 break;
             default:
                 hide();
