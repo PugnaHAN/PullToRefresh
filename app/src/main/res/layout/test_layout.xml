@@ -8,19 +8,14 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <com.example.zhangjuh.pulltorefresh.pullable.LoadingLayout
-        app:pullMode="pullFromStart"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"/>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:text="@string/app_name"/>
-
-    <com.example.zhangjuh.pulltorefresh.pullable.LoadingLayout
+    <com.example.zhangjuh.pulltorefresh.pullable.HeaderLoadingLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:pullMode="pullFromEnd"/>
+        app:pullMode="pullFromStart"/>
+
+
+    <com.example.zhangjuh.pulltorefresh.pullable.FooterLoadingLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
 
 </LinearLayout>

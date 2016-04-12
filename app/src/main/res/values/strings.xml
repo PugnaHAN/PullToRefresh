@@ -6,6 +6,7 @@
 
     <string name="refreshing">正在刷新...</string>
     <string name="loading">正在加载...</string>
+    <string name="click_to_load">点击加载</string>
     <string name="release_to_refresh">释放刷新数据</string>
     <string name="release_to_load">释放加载更多</string>
 </resources>

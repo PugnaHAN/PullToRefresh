@@ -6,33 +6,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!--<com.example.zhangjuh.pulltorefresh.pullable.LoadingLayout-->
-        <!--android:id="@+id/loadingLayout"-->
-        <!--android:layout_width="match_parent"-->
-        <!--android:layout_height="wrap_content"-->
-        <!--app:pullMode="pullFromStart"/>-->
-
-    <!--<LinearLayout-->
-        <!--android:orientation="horizontal"-->
-        <!--android:layout_width="match_parent"-->
-        <!--android:layout_height="match_parent">-->
-
-        <!--<Button-->
-            <!--android:id="@+id/startBtn"-->
-            <!--android:layout_width="wrap_content"-->
-            <!--android:layout_height="wrap_content"-->
-            <!--android:text="start"-->
-            <!--/>-->
-
-        <!--<Button-->
-            <!--android:id="@+id/cancelBtn"-->
-            <!--android:layout_width="wrap_content"-->
-            <!--android:layout_height="wrap_content"-->
-            <!--android:text="cancel"/>-->
-
-    <!--</LinearLayout>-->
-
     <com.example.zhangjuh.pulltorefresh.pullable.RefreshLayout
+        android:orientation="vertical"
         android:id="@+id/refreshLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

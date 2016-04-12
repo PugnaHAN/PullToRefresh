@@ -26,7 +26,7 @@ import java.lang.ref.WeakReference;
 /**
  * Created by zhangjuh on 2016/4/7.
  */
-public class LoadingLayout extends FrameLayout {
+public abstract class LoadingLayout extends FrameLayout {
     private static final String TAG = LoadingLayout.class.getSimpleName();
 
     private static final Interpolator DEFAULT_ANIMATION_INTERPOLATOR =
@@ -40,13 +40,15 @@ public class LoadingLayout extends FrameLayout {
     public static final int MODE_PULL_FROM_START = 0;
     public static final int MODE_PULL_FROM_END = 1;
 
-    private TextView mRefreshingNote;
-    private ImageView mRefreshingIcon;
-    private ProgressBar mProgressBar;
-    private Animator mAnimator;
+    protected TextView mRefreshingNote;
+    protected ImageView mRefreshingIcon;
+    protected ProgressBar mProgressBar;
+    protected Animator mAnimator;
 
     private FrameLayout mInnerLayout;
     private AnimatorHandler mAnimatorHandler = new AnimatorHandler(this);
+
+    protected Interpolator mInterpolator;
 
     private int mMode;
 
@@ -87,7 +89,7 @@ public class LoadingLayout extends FrameLayout {
     }
 
     public void endAnimation(){
-        setAnimationStatus(STOP_ANIMATION);
+        mAnimator.end();
     }
 
     public void pauseAnimation(){
@@ -164,6 +166,8 @@ public class LoadingLayout extends FrameLayout {
         LayoutInflater.from(context).inflate(R.layout.loadinglayout ,this);
         mInnerLayout = (FrameLayout) findViewById(R.id.loadingLayout);
 
+        mInterpolator = DEFAULT_ANIMATION_INTERPOLATOR;
+
         TypedArray types = context.obtainStyledAttributes(attrs, R.styleable.LoadingLayout);
         if(types.hasValue(R.styleable.LoadingLayout_pullMode)){
             mMode = types.getInt(R.styleable.LoadingLayout_pullMode, 0);
@@ -173,6 +177,7 @@ public class LoadingLayout extends FrameLayout {
         mRefreshingNote = (TextView) mInnerLayout.findViewById(R.id.loadingNote);
         mProgressBar = (ProgressBar) mInnerLayout.findViewById(R.id.loadingBar);
         mAnimator = ObjectAnimator.ofFloat(mRefreshingIcon, "rotation", 0f, 180f);
+        mAnimator.setInterpolator(mInterpolator);
         mAnimator.setDuration(500);
 
         switch (mMode) {
@@ -183,7 +188,7 @@ public class LoadingLayout extends FrameLayout {
             // pullFromEnd
             case MODE_PULL_FROM_END:
                 show("text");
-                mRefreshingNote.setText(R.string.loading);
+                mRefreshingNote.setText(R.string.click_to_load);
                 break;
             default:
                 hide();
@@ -257,39 +262,6 @@ public class LoadingLayout extends FrameLayout {
         mMode = mode;
     }
 
-    public final void reset() {
-        mAnimator.end();
-        switch (mMode) {
-            case MODE_PULL_FROM_START:
-                // show and hide
-                show("icon");
-                mRefreshingIcon.setImageResource(R.drawable.xlistview_arrow);
-                mAnimator = ObjectAnimator.ofFloat(mRefreshingIcon, "rotation",
-                        0f, -180f);
-                mAnimator.setDuration(100);
-                break;
-            case MODE_PULL_FROM_END:
-                // show and hide
-                show("text");
-                mRefreshingIcon.setImageResource(R.drawable.noarrow);
-                mAnimator = ObjectAnimator.ofFloat(mRefreshingIcon, "rotation",
-                        0f, 360f);
-                ((ObjectAnimator) mAnimator).setRepeatCount(ValueAnimator.INFINITE);
-                mAnimator.setDuration(500);
-                mRefreshingNote.setOnClickListener(new OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        show("icon");
-                        mAnimator.start();
-                    }
-                });
-                break;
-            default:
-                hide();
-                break;
-        }
-    }
-
     private static class AnimatorHandler extends Handler {
         private WeakReference<LoadingLayout> mLoadingLayoutWeakReference;
 
@@ -323,4 +295,6 @@ public class LoadingLayout extends FrameLayout {
             }
         }
     }
+
+    public abstract void reset();
 }
